@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+﻿
 
 namespace Postgress
 {
@@ -6,6 +6,8 @@ namespace Postgress
     using System.Text;
 
     using Entities;
+
+    using Newtonsoft.Json;
 
     using static Constants;
     using static Constants.Inventory;
@@ -54,10 +56,10 @@ namespace Postgress
     {
         private const Team UserTeam = Team.Green;
 
-        private const string south = "30.3571";
-        private const string north = "30.3658";
-        private const string west = "59.8064";
-        private const string east = "59.8128";
+        private const string south = "30.3182";
+        private const string north = "30.3369";
+        private const string west = "59.7959";
+        private const string east = "59.8094";
 
         static HttpClient? httpClient;
 
@@ -80,8 +82,13 @@ namespace Postgress
 
             if (result is { Status: Messages.Success, Data: { } } && result.Data.Any())
             {
-                Log(
-                    $"Portals found: {result.Data.Count()}. Press 'Enter' to hack/deploy, 'H' to hack only, other keys to exit");
+                var portals = result.Data.ToList();
+
+                Log($"Portals found: {portals.Count}. Press 'Enter' to hack/deploy, 'H' to hack only, other keys to exit");
+                Log($"Friendly: {portals.Count(x => x.Team == UserTeam)}");
+                Log($"Neutral: {portals.Count(x => x.Team == Team.None)}");
+                Log($"Enemy: {portals.Count(x => x.Team != UserTeam && x.Team != Team.None)}");
+
                 var key = Console.ReadKey();
                 if (key.Key is ConsoleKey.Enter or ConsoleKey.H)
                 {
@@ -100,51 +107,56 @@ namespace Postgress
         private static async Task<IEnumerable<PortalHackResult>> ProcessPortals(List<Portal> portals, bool hackOnly)
         {
             var portalHackResult = new List<PortalHackResult>(portals.Count);
-            var inventory = await GetInventory();
-
-            Log($"Inventory items: {inventory.Count}");
-            Log($"Friendly portals: {portals.Count(x => x.Team == UserTeam)}");
-            Log($"Neutral portals: {portals.Count(x => x.Team == Team.None)}");
-            Log($"Enemy portals: {portals.Count(x => x.Team != UserTeam && x.Team != Team.None)}");
 
 
             foreach (var portal in portals)
             {
-                var json = JsonConvert.SerializeObject(new { guid = portal.ID }, Formatting.None);
-
-                var request = new HttpRequestMessage(Post, $"{Endpoints.Discover}")
+                if (!hackOnly)
                 {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
-                };
-
-                var result = await SendAsync<HackResponse>(request);
-
-                if (result is { Status: Messages.Success, Loot: { }, Error: null })
-                {
-                    Log($"Portal [{portal.ID}]: Hacked! Looted {result.Loot.Count()} items!");
-                    portalHackResult.Add(new PortalHackResult { HackedAt = DateTime.Now, PortalID = portal.ID, Success = true });
-                }
-                else
-                {
-                    Log($"Portal [{portal.ID}]: {result.Error}");
-                    portalHackResult.Add(new PortalHackResult { PortalID = portal.ID, Success = false });
+                    if (portal.Team == UserTeam || portal.Team == Team.None)
+                    {
+                        var inventory = await GetInventory();
+                        Thread.Sleep(250);
+                        Log($"Inventory items: {inventory.Count}");
+                        await DeployPortal(portal, inventory);
+                        Thread.Sleep(250);
+                    }
+                    else
+                    {
+                        Log($"Enemy portal. Can't deploy!");
+                    }
                 }
 
-                if (hackOnly)
-                {
-                    continue;
-                }
-
-                if (!(portal.Team is Team.None or UserTeam) )
-                {
-                    Log($"Enemy portal. Can't deploy!");
-                    continue;
-                }
-
-                await DeployPortal(portal, inventory);
+                await HackPortal(portal, portalHackResult);
+                
+                // sleep 1s to reduce system load
+                Thread.Sleep(500);
             }
 
             return portalHackResult;
+        }
+
+        private static async Task HackPortal(Portal portal, List<PortalHackResult> portalHackResult)
+        {
+            var json = JsonConvert.SerializeObject(new { guid = portal.ID }, Formatting.None);
+
+            var request = new HttpRequestMessage(Post, $"{Endpoints.Discover}")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            var result = await SendAsync<HackResponse>(request);
+
+            if (result is { Status: Messages.Success, Loot: { }, Error: null })
+            {
+                Log($"Portal [{portal.ID}]: Hacked! Looted {result.Loot.Count()} items!");
+                portalHackResult.Add(new PortalHackResult { HackedAt = DateTime.Now, PortalID = portal.ID, Success = true });
+            }
+            else
+            {
+                Log($"Portal [{portal.ID}]: {result.Error}");
+                portalHackResult.Add(new PortalHackResult { PortalID = portal.ID, Success = false });
+            }
         }
 
         private static async Task DeployPortal(Portal portal, List<Entities.Inventory> inventory)
