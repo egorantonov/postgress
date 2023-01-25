@@ -4,6 +4,8 @@
 
     using System.Collections.Generic;
 
+    using static Postgress.Constants;
+
     public class PostgressResponse
     {
         [JsonProperty("status")]
@@ -43,13 +45,13 @@
         public double[] Coordinates { get; set; }
 
         [JsonProperty("t")]
-        public byte Team { get; set; } // unknown parameter, possibly team (1-red, 2-green, 3-blue) ???
+        public Team Team { get; set; } // unknown parameter, possibly team (1-red, 2-green, 3-blue) ???
 
         [JsonProperty("e")]
         public double Energy { get; set; }
     }
 
-    public class PortalResponse : DataResponse<IEnumerable<PortalData>>
+    public class PortalResponse : DataResponse<PortalData>
     {
 
     }
@@ -78,7 +80,7 @@
         public string Title { get; set; }
 
         [JsonProperty("te")]
-        public string Team { get; set; } // possibly team? no owner - 0, R-1, G-2, B-3 
+        public Team Team { get; set; } // possibly team? no owner - 0, R-1, G-2, B-3 
     }
 
     public class Resonator
@@ -111,13 +113,13 @@
         public string ID { get; set; }
 
         [JsonProperty("t")]
-        public string Type { get; set; } // possibly type of the item? 1-resonator, 2-burster ?
+        public byte Type { get; set; } // possibly type of the item? 1-resonator, 2-burster ?
 
         [JsonProperty("l")]
-        public string Level { get; set; } // possibly Level of the item
+        public string LevelOrLink { get; set; } // possibly Level of the item
 
         [JsonProperty("a")]
-        public string Amount { get; set; } // possibly amount of items
+        public int Amount { get; set; } // possibly amount of items
     }
 
     public class Xp
@@ -127,5 +129,34 @@
 
         [JsonProperty("diff")]
         public int Difference { get; set; }
+    }
+
+    public class InventoryResponse : PostgressResponse
+    {
+        [JsonProperty("i")]
+        public List<Inventory> Inventory { get; set; }
+    }
+
+    public class Inventory
+    {
+        [JsonProperty("g")]
+        public string ID { get; set; }
+
+        [JsonProperty("a")]
+        public int Amount { get; set; }
+
+        // Level if resonator/burster (t=1|2), link if key (t=3)
+        [JsonProperty("l")]
+        public string LevelOrLink { get; set; }
+        
+        [JsonProperty("t")]
+        public byte Type { get; set; }
+
+
+        [JsonProperty("ti")]
+        public string? Title { get; set; } // key only
+
+        [JsonProperty("c")]
+        public double[]? Coordinates { get; set; } // key only
     }
 }

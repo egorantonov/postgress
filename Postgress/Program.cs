@@ -8,6 +8,8 @@ namespace Postgress
     using Entities;
 
     using static Constants;
+    using static Constants.Inventory;
+    using static System.Net.Http.HttpMethod;
 
     public class PortalDeployResult
     {
@@ -16,6 +18,11 @@ namespace Postgress
         /// </summary>
         public string PortalID { get; set; }
 
+        public string PortalName { get; set; }
+
+        public string PortalOwner { get; set; }
+
+        public string Status { get; set; }
 
         public byte DeployedResonators { get; set; }
 
@@ -45,94 +52,203 @@ namespace Postgress
 
     internal class Program
     {
+        private const Team UserTeam = Team.Green;
+
+        private const string south = "30.3571";
+        private const string north = "30.3658";
+        private const string west = "59.8064";
+        private const string east = "59.8128";
+
         static HttpClient? httpClient;
 
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            Log("Hello World!");
 
             httpClient = InitializeHttpClient();
 
             var parameters = new Dictionary<string, string>
             {
-                { "sw", "30.30817483185179,59.83046254218334" },
-                { "ne", "30.340156000339253,59.853583185887544" },
+                { "sw", $"{south},{west}" },
+                { "ne", $"{north},{east}" },
                 { "z", "15" }
             };
             var query = parameters.BuildQueryString();
 
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{Endpoints.InView}{query}");
-
-            using var response = await httpClient.SendAsync(request);
-            var data = response.Content.ReadAsStringAsync().Result;
-
-            var result = JsonConvert.DeserializeObject<InViewResponse>(data);
+            var request = new HttpRequestMessage(Get, $"{Endpoints.InView}{query}");
+            var result = await SendAsync<InViewResponse>(request);
 
             if (result is { Status: Messages.Success, Data: { } } && result.Data.Any())
             {
-                Console.WriteLine($"Portals found: {result.Data.Count()}. Press 'Enter' to hack, other keys to exit");
+                Log(
+                    $"Portals found: {result.Data.Count()}. Press 'Enter' to hack/deploy, 'H' to hack only, other keys to exit");
                 var key = Console.ReadKey();
-                if (key.Key == ConsoleKey.Enter)
+                if (key.Key is ConsoleKey.Enter or ConsoleKey.H)
                 {
-                    Console.WriteLine("\r\nHacking...\r\n");
-                    await ProcessPortals(result.Data);
+                    Log("\r\nProcessing...\r\n");
+                    await ProcessPortals(result.Data.ToList(), key.Key == ConsoleKey.H);
                 }
                 else
                 {
-                    Console.WriteLine("\r\nFinished!");
+                    Log("\r\nFinished!");
                     return;
                 }
 
             }
         }
 
-        private static async Task ProcessPortals(IEnumerable<Portal> data)
+        private static async Task<IEnumerable<PortalHackResult>> ProcessPortals(List<Portal> portals, bool hackOnly)
         {
-            var portals = data.ToList();
-            
-            var portalHackResult = await HackPortals(portals);
+            var portalHackResult = new List<PortalHackResult>(portals.Count);
+            var inventory = await GetInventory();
 
-            await DeployPortals(portals);
-        }
+            Log($"Inventory items: {inventory.Count}");
+            Log($"Friendly portals: {portals.Count(x => x.Team == UserTeam)}");
+            Log($"Neutral portals: {portals.Count(x => x.Team == Team.None)}");
+            Log($"Enemy portals: {portals.Count(x => x.Team != UserTeam && x.Team != Team.None)}");
 
-        private static async Task DeployPortals(List<Portal> portals)
-        {
-            
-        }
-
-        private static async Task<IEnumerable<PortalHackResult>> HackPortals(List<Portal> portals)
-        {
-            var portalHackResult = new List<PortalHackResult>(portals.Capacity);
 
             foreach (var portal in portals)
             {
                 var json = JsonConvert.SerializeObject(new { guid = portal.ID }, Formatting.None);
 
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{Endpoints.Discover}")
+                var request = new HttpRequestMessage(Post, $"{Endpoints.Discover}")
                 {
                     Content = new StringContent(json, Encoding.UTF8, "application/json")
                 };
 
-                httpClient ??= InitializeHttpClient();
-                var response = await httpClient.SendAsync(request);
-                var data = response.Content.ReadAsStringAsync().Result;
-
-                var result = JsonConvert.DeserializeObject<HackResponse>(data);
+                var result = await SendAsync<HackResponse>(request);
 
                 if (result is { Status: Messages.Success, Loot: { }, Error: null })
                 {
-                    Console.WriteLine($"Portal [{portal.ID}]: Hacked! Looted {result.Loot.Count()} items!");
+                    Log($"Portal [{portal.ID}]: Hacked! Looted {result.Loot.Count()} items!");
                     portalHackResult.Add(new PortalHackResult { HackedAt = DateTime.Now, PortalID = portal.ID, Success = true });
                 }
                 else
                 {
-                    Console.WriteLine($"Portal [{portal.ID}]: {result.Error}");
+                    Log($"Portal [{portal.ID}]: {result.Error}");
                     portalHackResult.Add(new PortalHackResult { PortalID = portal.ID, Success = false });
+                }
+
+                if (hackOnly)
+                {
+                    continue;
+                }
+
+                if (!(portal.Team is Team.None or UserTeam) )
+                {
+                    Log($"Enemy portal. Can't deploy!");
+                    continue;
+                }
+
+                await DeployPortal(portal, inventory);
+            }
+
+            return portalHackResult;
+        }
+
+        private static async Task DeployPortal(Portal portal, List<Entities.Inventory> inventory)
+        {
+            var parameters = new Dictionary<string, string>
+            {
+                { "guid", portal.ID }
+            };
+            var query = parameters.BuildQueryString();
+            var request = new HttpRequestMessage(Get, $"{Endpoints.Point}{query}");
+            var result = await SendAsync<PortalResponse>(request);
+
+            if (result?.Data == null || result.Status != Messages.Success || !string.IsNullOrWhiteSpace(result.Error))
+            {
+                Log($"Can't get Portal data. Portal ID: [{portal.ID}]. {result?.Error}");
+                return;
+            }
+
+            var freeSlots = MaxResonators - result.Data.Slots.Count();
+            if (freeSlots > 0)
+            {
+                Log($"Deploying '{result.Data.Title}' [{portal.ID}]");
+
+                var deployResult = await DeployPortal(result.Data, inventory, freeSlots);
+
+                Log(deployResult);
+            }
+        }
+
+        private static async Task<List<Entities.Inventory>> GetInventory()
+        {
+            var request = new HttpRequestMessage(Get, $"{Endpoints.Inventory}");
+            var result = await SendAsync<InventoryResponse>(request);
+
+            if (result is { Status: Messages.Success, Inventory: { }, Error: null })
+            {
+                return result.Inventory;
+            }
+
+            Log("Can't get inventory!");
+            return null;
+        }
+
+        private static async Task<string> DeployPortal(PortalData portal, List<Entities.Inventory> inventory, int availableSlots)
+        {
+            var freeSlots = availableSlots;
+
+            while (freeSlots > 0)
+            {
+                var core = GetHighestLevelResonator(inventory, out var levelResonators);
+
+                var json = JsonConvert.SerializeObject(new { guid = portal.ID, core = core }, Formatting.None);
+                var request = new HttpRequestMessage(Post, $"{Endpoints.Deploy}");
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var result = await SendAsync<PortalResponse>(request);
+                var slot = 1 + availableSlots - freeSlots;
+
+                if (result is { Status: Messages.Success, Data: { }, Error: null })
+                {
+                    Log($"Portal [{portal.ID}] slot ({slot}) deployed");
+                    
+                    levelResonators.Amount--;
+                    freeSlots--;
+                }
+                else
+                {
+                    Log($"Portal [{portal.ID}] slot ({slot}) deployment failed! {result?.Error}");
+                    throw new Exception(result?.Error);
+                }
+            }
+
+            return $"Portal `{portal.Title}` [{portal.ID}] deployed with {availableSlots} resonators";
+        }
+
+        private static string GetHighestLevelResonator(List<Entities.Inventory> inventory, out Entities.Inventory levelResonators)
+        {
+
+
+            foreach (var level in Levels)
+            {
+                levelResonators = inventory.FirstOrDefault(x => x.Type == 1 && x.LevelOrLink == level);
+
+                if (levelResonators != null && levelResonators.Amount > 0)
+                {
+                    return levelResonators.ID;
                 }
 
             }
 
-            return portalHackResult;
+            const string noResonatorsLeft = "[ERROR] No resonators left!";
+            Log(noResonatorsLeft);
+            throw new Exception(noResonatorsLeft);
+        }
+
+        private static async Task<T> SendAsync<T>(HttpRequestMessage request)
+        {
+            httpClient ??= InitializeHttpClient();
+
+            using var response = await httpClient.SendAsync(request);
+            var data = response.Content.ReadAsStringAsync().Result;
+
+            var result = JsonConvert.DeserializeObject<T>(data);
+            return result;
         }
 
         private static HttpClient InitializeHttpClient()
@@ -147,6 +263,11 @@ namespace Postgress
             newHttpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
 
             return newHttpClient;
+        }
+
+        private static void Log(string message)
+        {
+            Console.WriteLine(message);
         }
     }
 }
