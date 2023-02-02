@@ -10,18 +10,45 @@
             Blue = 3,
         }
 
+        public enum Zoom
+        {
+            Level0 = 0,
+            Level1 = 1,
+            Level2 = 2,
+            Level3 = 3,
+            Level4 = 4
+        }
+
+        public enum Commands
+        {
+            Watch = 'W',
+            Deploy = 'D',
+            Hack = 'H',
+            Recharge = 'R'
+        }
+
+        public const int Base = 2;
+        public const int TileSize = 16;
+
+        public const string MoveSouth = "MS";
+        public const string MoveNorth = "MN";
+        public const string MoveWest = "MW";
+        public const string MoveEast = "ME";
+        public static string[] Moves = { MoveSouth, MoveNorth, MoveWest, MoveEast };
+
         public const string UserName = "JARVIS";
         public const byte UserTeam = 2;
         public const int CoolDownSec = 90;
         public const string Token = "36fcc3cf-a638-45ae-9d09-65e610bf84fe";
         public const string UserAgent = "Mozilla/5.0 (iPad; CPU OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.77 Mobile/15E148 Safari/604.1";
-        public const string Host = "https://3d.sytes.net:8080";
+        public const string Host = "https://3d.sytes.net";
 
         public const int MaxResonators = 6;
 
         public static class Messages
         {
             public const string Success = "Success";
+            public const string FullyCharged = "Point is fully repaired";
         }
 
         public static class Endpoints
@@ -30,13 +57,15 @@
             public const string InView = $"{Api}/inview";
             public const string Discover = $"{Api}/discover";
             public const string Deploy = $"{Api}/deploy";
+            public const string Repair = $"{Api}/repair";
             public const string Point = $"{Api}/point";
             public const string Inventory = $"{Api}/inventory";
         }
 
         public static class Inventory
         {
-            public static string[] Levels = { "8", "7", "6","5", "4", "3", "2", "1" };
+            public static string[] Levels = { "10", "9", "8", "7", "6","5", "4", "3", "2", "1" };
+            public static int[] Health = { 6500, 5250, 4000, 3500, 2500, 2000, 1500, 1000, 750, 500 };
 
             public static class Resonators
             {

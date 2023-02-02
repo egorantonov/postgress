@@ -107,6 +107,12 @@
         public Xp? Xp { get; set; }
     }
 
+    public class RepairResponse : DataResponse<PortalData>
+    {
+        [JsonProperty("xp")]
+        public Xp? Xp { get; set; }
+    }
+
     public class Loot
     {
         [JsonProperty("g")]
