@@ -168,7 +168,7 @@ namespace Postgress
                 }
 
                 Log("\r\nProcessing...\r\n");
-                var processResult = await ProcessPortals(result.Data.ToList(), input);
+                var processResult = await ProcessPortals(result.Data.ToList(), input, lt, ln);
                 return true;
             }
 
@@ -179,11 +179,11 @@ namespace Postgress
         private static string GetStringCoordinate(double input) =>
             Math.Round(input, 4).ToString(CultureInfo.InvariantCulture).Replace(',', '.');
 
-        private static async Task<IEnumerable<PortalHackResult>> ProcessPortals(List<Portal> portals, string command)
+        private static async Task<IEnumerable<PortalHackResult>> ProcessPortals(List<Portal> portals, string command, double lt, double ln)
         {
             var portalHackResult = new List<PortalHackResult>(portals.Count);
 
-
+            // Process Deploy, Recharge and Hack
             foreach (var portal in portals)
             {
                 // Deploy
@@ -224,7 +224,43 @@ namespace Postgress
                 }
             }
 
+            var enemyPortals = portals.Where(x => x.Team != UserTeam && x.Team != Team.None).ToList();
+
+            if (enemyPortals.Any())
+            {
+                // Process Attack
+                Log($"Starting attack on ${enemyPortals.Count} portals!", ConsoleColor.Yellow);
+
+                var inventory = await GetInventory();
+                foreach (var enemyPortal in enemyPortals)
+                {
+                    Attack(enemyPortal, inventory);
+                }
+            }
+
+
+
             return portalHackResult;
+        }
+
+        private static async Task Attack(Portal enemyPortal, List<Entities.Inventory> inventory)
+        {
+            var energy = enemyPortal.Energy;
+
+            while (energy > 0d)
+            {
+                var guid = GetHighestLevelBurster(inventory, out Entities.Inventory levelBursters);
+                var json = JsonConvert.SerializeObject(
+                    new { guid, position = new[] { enemyPortal.Coordinates[1], enemyPortal.Coordinates[0] } },
+                    Formatting.None);
+
+                var request = new HttpRequestMessage(Post, $"{Endpoints.Attack}")
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+
+                // var result = await SendAsync<AttackResponse>(request);
+            }
         }
 
         private static async Task HackPortal(Portal portal, List<PortalHackResult> portalHackResult)
@@ -249,7 +285,7 @@ namespace Postgress
                 portalHackResult.Add(new PortalHackResult { PortalID = portal.ID, Success = false });
             }
         }
-
+        
         private static async Task DeployPortal(Portal portal, List<Entities.Inventory> inventory)
         {
             var parameters = new Dictionary<string, string>
@@ -271,7 +307,7 @@ namespace Postgress
             {
                 Log($"Deploying '{result.Data.Title}' [{portal.ID}]", ConsoleColor.Gray);
 
-                var deployResult = await DeployPortal(result.Data, inventory, freeSlots);
+                var deployResult = await DeployResonators(result.Data, inventory, freeSlots);
 
                 Log(deployResult);
             }
@@ -291,7 +327,7 @@ namespace Postgress
             return null;
         }
 
-        private static async Task<string> DeployPortal(PortalData portal, List<Entities.Inventory> inventory, int availableSlots)
+        private static async Task<string> DeployResonators(PortalData portal, List<Entities.Inventory> inventory, int availableSlots)
         {
             var freeSlots = availableSlots;
 
@@ -325,17 +361,31 @@ namespace Postgress
 
         private static string GetHighestLevelResonator(List<Entities.Inventory> inventory, out Entities.Inventory levelResonators)
         {
-
-
             foreach (var level in Levels)
             {
-                levelResonators = inventory.FirstOrDefault(x => x.Type == 1 && x.LevelOrLink == level);
+                levelResonators = inventory.FirstOrDefault(x => x.Type == (byte)Type.Resonator && x.LevelOrLink == level);
 
                 if (levelResonators != null && levelResonators.Amount > 0)
                 {
                     return levelResonators.ID;
                 }
+            }
 
+            const string noResonatorsLeft = "[ERROR] No resonators left!";
+            Log(noResonatorsLeft);
+            throw new Exception(noResonatorsLeft);
+        }
+
+        private static string GetHighestLevelBurster(List<Entities.Inventory> inventory, out Entities.Inventory levelBursters)
+        {
+            foreach (var level in Levels)
+            {
+                levelBursters = inventory.FirstOrDefault(x => x.Type == (byte)Type.Burster && x.LevelOrLink == level);
+
+                if (levelBursters != null && levelBursters.Amount > 0)
+                {
+                    return levelBursters.ID;
+                }
             }
 
             const string noResonatorsLeft = "[ERROR] No resonators left!";

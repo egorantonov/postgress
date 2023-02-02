@@ -45,7 +45,7 @@
         public double[] Coordinates { get; set; }
 
         [JsonProperty("t")]
-        public Team Team { get; set; } // unknown parameter, possibly team (1-red, 2-green, 3-blue) ???
+        public Team Team { get; set; }
 
         [JsonProperty("e")]
         public double Energy { get; set; }
@@ -165,4 +165,5 @@
         [JsonProperty("c")]
         public double[]? Coordinates { get; set; } // key only
     }
+
 }

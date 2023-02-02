@@ -36,10 +36,7 @@
         public const string MoveEast = "ME";
         public static string[] Moves = { MoveSouth, MoveNorth, MoveWest, MoveEast };
 
-        public const string UserName = "JARVIS";
-        public const byte UserTeam = 2;
-        public const int CoolDownSec = 90;
-        public const string Token = "36fcc3cf-a638-45ae-9d09-65e610bf84fe";
+        public const string Token = "36fcc3cf-a638-45ae-9d09-65e610bf84fe"; // JARVIS
         public const string UserAgent = "Mozilla/5.0 (iPad; CPU OS 13_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.77 Mobile/15E148 Safari/604.1";
         public const string Host = "https://3d.sytes.net";
 
@@ -58,7 +55,9 @@
             public const string Discover = $"{Api}/discover";
             public const string Deploy = $"{Api}/deploy";
             public const string Repair = $"{Api}/repair";
+            public const string Attack = $"{Api}/attack2";
             public const string Point = $"{Api}/point";
+            public const string Self = $"{Api}/self";
             public const string Inventory = $"{Api}/inventory";
         }
 
@@ -94,7 +93,14 @@
             }
 
             public static class Keys { }
-            
+
+            public enum Type
+            {
+                Resonator = 1,
+                Burster = 2,
+                Link = 3
+            }
+
         }
     }
 }
